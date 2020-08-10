@@ -187,4 +187,22 @@ func init() {
             Filters: nil,
             Params: nil})
 
+    beego.GlobalControllerRouter["fuck_youku_api/controllers:VideoController"] = append(beego.GlobalControllerRouter["fuck_youku_api/controllers:VideoController"],
+        beego.ControllerComments{
+            Method: "Search",
+            Router: "/video/search",
+            AllowHTTPMethods: []string{"*"},
+            MethodParams: param.Make(),
+            Filters: nil,
+            Params: nil})
+
+    beego.GlobalControllerRouter["fuck_youku_api/controllers:VideoController"] = append(beego.GlobalControllerRouter["fuck_youku_api/controllers:VideoController"],
+        beego.ControllerComments{
+            Method: "SendEs",
+            Router: "/video/send/es",
+            AllowHTTPMethods: []string{"*"},
+            MethodParams: param.Make(),
+            Filters: nil,
+            Params: nil})
+
 }

@@ -3,9 +3,13 @@ package models
 import (
 	"encoding/json"
 	"fmt"
-	redisClient "fuck_youku_api/services/redis"
 	"strconv"
 	"time"
+
+	"fuck_youku_api/services/es"
+	redisClient "fuck_youku_api/services/redis"
+
+	"github.com/olivere/elastic/v7"
 
 	"github.com/gomodule/redigo/redis"
 
@@ -21,6 +25,8 @@ type Video struct {
 	AddTime            int64
 	EpisodesCount      int
 	IsEnd              int
+	IsHot              int
+	IsRecommend        int
 	ChannelId          int
 	Status             int
 	RegionId           int
@@ -130,6 +136,76 @@ func GetChannelVideoList(channelId int, regionId int, typeId int, end string, so
 	qs.Limit(limit, offset)
 	_, err := qs.Values(&videos, params...)
 	return nums, videos, err
+}
+
+func GetChannelVideoListEs(channelId int, regionId int, typeId int, end string, sort string, offset int, limit int) (int64, []Video, error) {
+	source := make(map[string]interface{})
+	query := make(map[string]interface{})
+	b := make(map[string]interface{})
+	var must []map[string]interface{}
+	must = append(must, map[string]interface{}{
+		"term": map[string]interface{}{
+			"channel_id": channelId,
+		},
+	})
+	must = append(must, map[string]interface{}{
+		"term": map[string]interface{}{
+			"status": 1,
+		},
+	})
+	if regionId > 0 {
+		must = append(must, map[string]interface{}{
+			"term": map[string]interface{}{
+				"region_id": regionId,
+			},
+		})
+	}
+	if typeId > 0 {
+		must = append(must, map[string]interface{}{
+			"term": map[string]interface{}{
+				"type_id": typeId,
+			},
+		})
+	}
+	if end == "n" {
+		must = append(must, map[string]interface{}{
+			"term": map[string]interface{}{
+				"is_end": 0,
+			},
+		})
+	} else if end == "y" {
+		must = append(must, map[string]interface{}{
+			"term": map[string]interface{}{
+				"is_end": 1,
+			},
+		})
+	}
+
+	b["must"] = must
+	query["bool"] = b
+	var sortBy []elastic.Sorter
+	sortBy = append(sortBy, elastic.NewFieldSort("add_time").Desc())
+	if sort == "episodesUpdateTime" {
+		sortBy = sortBy[0:]
+		sortBy = append(sortBy, elastic.NewFieldSort("episodes_update_time").Desc())
+	} else if sort == "comment" {
+		sortBy = sortBy[0:]
+		sortBy = append(sortBy, elastic.NewFieldSort("comment").Desc())
+	}
+	source["query"] = query
+	res := es.Search("fuck_video", source, offset, limit, sortBy)
+	var resData []Video
+	for _, hit := range res.Hits.Hits {
+		var data Video
+		err := json.Unmarshal(hit.Source, &data)
+		if err != nil {
+			fmt.Println(err)
+		}
+		resData = append(resData, data)
+	}
+
+	return res.TotalHits(), resData, nil
+
 }
 
 /**
@@ -374,4 +450,12 @@ func MVideoSave(title string, subTitle string, channelId int, regionId int, type
 		_, _ = o.Raw("insert into video_episodes (title, add_time, num, video_id, play_url, status, comment) values (?,?,?,?,?,?,?)", subTitle, nowTime, 1, videoId, playUrl, 1, 0).Exec()
 	}
 	return err
+}
+
+// 获取所有视频数据
+func GetAllList() (int64, []Video, error) {
+	o := orm.NewOrm()
+	var video []Video
+	num, err := o.Raw("select * from video").QueryRows(&video)
+	return num, video, err
 }
